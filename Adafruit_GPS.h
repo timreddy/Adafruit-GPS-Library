@@ -96,9 +96,17 @@ All text above must be included in any redistribution
  #include "NewSoftSerial.h"
 #endif
 
+#include "buffered_read.h"
+
 
 class Adafruit_GPS {
+ private:
+   BufferedRead buffer; 
+   char* NMEAline;
+   boolean recvdflag;
+
  public:
+  boolean inStandbyMode;
   void begin(uint16_t baud); 
 
 #ifdef __AVR__

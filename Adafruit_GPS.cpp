@@ -15,20 +15,15 @@ All text above must be included in any redistribution
 #endif
 #include <Adafruit_GPS.h>
 
+// Use a buffered read class to separate the GPS handling
+// from the double buffering details.
+#include "buffered_read.h"
+#include <string.h>
+
 // how long are max NMEA lines to parse?
-#define MAXLINELENGTH 120
-
-// we double buffer: read one line in and leave one for the main program
-volatile char line1[MAXLINELENGTH];
-volatile char line2[MAXLINELENGTH];
-// our index into filling the current line
-volatile uint8_t lineidx=0;
-// pointers to the double buffers
-volatile char *currentline;
-volatile char *lastline;
-volatile boolean recvdflag;
-volatile boolean inStandbyMode;
-
+// timreddy: 82 characters, including leading $ and CR/LF
+#define NMEA_0183_LINE_LEN 82
+#define N_BUFFERS 12
 
 boolean Adafruit_GPS::parse(char *nmea) {
   // do checksum check
@@ -37,7 +32,6 @@ boolean Adafruit_GPS::parse(char *nmea) {
   if (nmea[strlen(nmea)-4] == '*') {
     uint16_t sum = parseHex(nmea[strlen(nmea)-3]) * 16;
     sum += parseHex(nmea[strlen(nmea)-2]);
-    
     // check checksum 
     for (uint8_t i=1; i < (strlen(nmea)-4); i++) {
       sum ^= nmea[i];
@@ -281,41 +275,20 @@ char Adafruit_GPS::read(void) {
 
   //Serial.print(c);
 
-//  if (c == '$') {         //please don't eat the dollar sign - rdl 9/15/14
-//    currentline[lineidx] = 0;
-//    lineidx = 0;
-//  }
-  if (c == '\n') {
-    currentline[lineidx] = 0;
+  buffer.write_line(&c, 1);
 
-    if (currentline == line1) {
-      currentline = line2;
-      lastline = line1;
-    } else {
-      currentline = line1;
-      lastline = line2;
-    }
-
-    //Serial.println("----");
-    //Serial.println((char *)lastline);
-    //Serial.println("----");
-    lineidx = 0;
+  if(c == '\n') {
     recvdflag = true;
   }
-
-  currentline[lineidx++] = c;
-  if (lineidx >= MAXLINELENGTH)
-    lineidx = MAXLINELENGTH-1;
-
   return c;
 }
 
 #ifdef __AVR__
 // Constructor when using SoftwareSerial or NewSoftSerial
 #if ARDUINO >= 100
-Adafruit_GPS::Adafruit_GPS(SoftwareSerial *ser)
+Adafruit_GPS::Adafruit_GPS(SoftwareSerial *ser) : buffer(NMEA_0183_LINE_LEN * N_BUFFERS)
 #else
-Adafruit_GPS::Adafruit_GPS(NewSoftSerial *ser) 
+Adafruit_GPS::Adafruit_GPS(NewSoftSerial *ser)  : buffer(NMEA_0183_LINE_LEN * N_BUFFERS)
 #endif
 {
   common_init();     // Set everything to common state, then...
@@ -324,7 +297,7 @@ Adafruit_GPS::Adafruit_GPS(NewSoftSerial *ser)
 #endif
 
 // Constructor when using HardwareSerial
-Adafruit_GPS::Adafruit_GPS(HardwareSerial *ser) {
+Adafruit_GPS::Adafruit_GPS(HardwareSerial *ser) : buffer(NMEA_0183_LINE_LEN * N_BUFFERS) {
   common_init();  // Set everything to common state, then...
   gpsHwSerial = ser; // ...override gpsHwSerial with value passed.
 }
@@ -337,9 +310,13 @@ void Adafruit_GPS::common_init(void) {
   gpsHwSerial = NULL; // port pointer in corresponding constructor
   recvdflag   = false;
   paused      = false;
-  lineidx     = 0;
-  currentline = line1;
-  lastline    = line2;
+
+  //
+  // use calloc to init to 0's
+  //
+  if(!(this->NMEAline = (char*) calloc(NMEA_0183_LINE_LEN, sizeof(char)))) {
+    exit(1);
+  }
 
   hour = minute = seconds = year = month = day =
     fixquality = satellites = 0; // uint8_t
@@ -381,7 +358,8 @@ void Adafruit_GPS::pause(boolean p) {
 
 char *Adafruit_GPS::lastNMEA(void) {
   recvdflag = false;
-  return (char *)lastline;
+  unsigned int n_recv = (unsigned int) buffer.read_line(this->NMEAline, NMEA_0183_LINE_LEN, '\n');
+  return (char *)this->NMEAline;
 }
 
 // read a Hex value and return the decimal equivalent
