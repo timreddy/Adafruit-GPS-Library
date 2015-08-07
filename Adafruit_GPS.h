@@ -29,6 +29,8 @@ All text above must be included in any redistribution
   #endif
 #endif
 
+#include "NMEA_datatypes.h"
+
 // different commands to set the update rate from once a second (1 Hz) to 10 times a second (10Hz)
 // Note that these only control the rate at which the position is echoed, to actually speed up the
 // position fix you must also send one of the position fix rate commands below too.
@@ -106,6 +108,7 @@ class Adafruit_GPS {
    boolean recvdflag;
 
  public:
+  NMEA_GPS data;
   boolean inStandbyMode;
   void begin(uint16_t baud); 
 
@@ -126,8 +129,8 @@ class Adafruit_GPS {
   
   void pause(boolean b);
 
+  unsigned int NMEA_checksum(char *nmea);
   boolean parseNMEA(char *response);
-  uint8_t parseHex(char c);
 
   char read(void);
   boolean parse(char *);
@@ -135,21 +138,6 @@ class Adafruit_GPS {
 
   boolean wakeup(void);
   boolean standby(void);
-
-  uint8_t hour, minute, seconds, year, month, day;
-  uint16_t milliseconds;
-  // Floating point latitude and longitude value in degrees.
-  float latitude, longitude;
-  // Fixed point latitude and longitude value with degrees stored in units of 1/100000 degrees,
-  // and minutes stored in units of 1/100000 degrees.  See pull #13 for more details:
-  //   https://github.com/adafruit/Adafruit-GPS-Library/pull/13
-  int32_t latitude_fixed, longitude_fixed;
-  float latitudeDegrees, longitudeDegrees;
-  float geoidheight, altitude;
-  float speed, angle, magvariation, HDOP;
-  char lat, lon, mag;
-  boolean fix;
-  uint8_t fixquality, satellites;
 
   boolean waitForSentence(const char *wait, uint8_t max = MAXWAITSENTENCE);
   boolean LOCUS_StartLogger(void);
